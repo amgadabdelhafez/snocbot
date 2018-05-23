@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<record_update table="sys_auth_profile_basic">
+    <sys_auth_profile_basic action="INSERT_OR_UPDATE">
+        <name>assistant.ng.bluemix</name>
+        <password>F6uk8T1W3wXKVwZbQhyHgw==</password>
+        <sys_class_name>sys_auth_profile_basic</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2018-05-19 16:36:40</sys_created_on>
+        <sys_id>75981eefdb421300c7aaaab35b961922</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_name>assistant.ng.bluemix</sys_name>
+        <sys_package display_value="SNOC Bot" source="x_94469_snoc_bot">40119227db021300c7aaaab35b96196f</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="SNOC Bot">40119227db021300c7aaaab35b96196f</sys_scope>
+        <sys_update_name>sys_auth_profile_basic_75981eefdb421300c7aaaab35b961922</sys_update_name>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2018-05-19 16:36:40</sys_updated_on>
+        <username>5a505a17-5a88-4d0e-b568-bb3ee936ca62</username>
+    </sys_auth_profile_basic>
+</record_update>

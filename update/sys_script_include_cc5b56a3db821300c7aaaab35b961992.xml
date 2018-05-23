@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>package_private</access>
+        <active>true</active>
+        <api_name>x_94469_snoc_bot.ActionFacade</api_name>
+        <client_callable>false</client_callable>
+        <description>Execute actions depending on users intent</description>
+        <name>ActionFacade</name>
+        <script><![CDATA[var ActionFacade = Class.create();
+ActionFacade.prototype = {
+    initialize: function(vaConstants, i18n) {
+		this.vaConstants = vaConstants;
+		this.i18n = i18n;
+    },
+	
+	processAction: function(response) { //function(context, responseMessage) {
+		var watsonUtil = new x_94469_snoc_bot.WatsonChatUtil(this.vaConstants, this.i18n);
+		var start = watsonUtil.currentTimeMillis();	
+		var responseMessage = response.output.text[0];
+		if (!response.context.sn || !response.context.sn.action_sys_id) 
+			return responseMessage;
+		
+		var gr = new GlideRecord(this.vaConstants.IBM_VA_ACTION);
+		var resultGr = gr.get(response.context.sn.action_sys_id);
+		if (!resultGr || !gr.active) {
+			if (!resultGr)
+				response.action_error = 'Action Error - Cannot find the action from the given action_sys_id: ' 
+					+ response.context.sn.action_sys_id;
+			else
+				response.action_error = 'Action Error - The action is currently not active: ' + gr.name;
+			this._resetActionId(response);
+			return;
+		}
+		
+		var evaluator = new GlideScopedEvaluator();
+		evaluator.withReturnError(true);
+		
+		//Add script parameters
+		var inputs = this._getActionParams(response);
+		inputs.response = response;
+		inputs.vaConstants = this.vaConstants;
+		inputs.i18n = this.i18n;
+		evaluator.putVariable(this.vaConstants.INPUTS, inputs);
+		
+		var outputs = {'params' : {}};
+		evaluator.putVariable(this.vaConstants.OUTPUTS, outputs);
+		
+		var error = null;
+		try {
+			error = evaluator.evaluateScript(gr, this.vaConstants.SCRIPT, null);
+		} catch(exc) {
+			error = exc;
+		}
+		
+		if (!gs.nil(error)) {
+			response.action_error = 'Action Error - Action SysId: ' + response.context.sn.action_sys_id
+				+ '\n' + this._formatError(error);
+			this._resetActionId(response);
+			return;
+		}
+		
+		outputs = evaluator.getVariable(this.vaConstants.OUTPUTS);
+		
+		var message = gr.result_message;
+		if (message) {
+			if (gr.getValue(this.vaConstants.MESSAGE_RULE) === this.vaConstants.OVERRIDE) {
+				//Override message
+				responseMessage = message;
+			} else if (gr.getValue(this.vaConstants.MESSAGE_RULE) === this.vaConstants.PREPEND) {
+				//prepend message
+				responseMessage = message + responseMessage;
+			} else {
+				//Default append
+				responseMessage += message;
+			}
+		}
+		
+		// format replacement. this replaces ${value1} in formatted string with outputs.value1
+		if (responseMessage !== '') {
+			var reg = new RegExp('\\$\\{([a-zA-Z0-9_.]+)\\}');
+			var match = '';
+
+			//For every variable in the result message, replace it with its value
+			while ((match = reg.exec(responseMessage)) !== null) {
+				var key = match[1];
+				var re = new RegExp('\\$\\{' + key + '\\}', 'g');
+				var formatStr = this._formatMessageParams(this._getKeyValue(outputs, key));
+				responseMessage = responseMessage.replace(re, formatStr);
+			}
+		}
+		
+		// add/overwrite outputs.context changes into context variable
+		for (var param in outputs.params) {
+			response.context.sn.params[param] = outputs.params[param];
+		}
+					
+		this._resetActionId(response);
+		response.output.text[0] = responseMessage;
+		var end = watsonUtil.currentTimeMillis();
+		watsonUtil.logDuration('ActionFacade', start, end);		
+	},
+	
+	_getKeyValue: function(obj, key) {
+		var keys = key.split(".");
+		if (keys.length > 1) {
+			var index = keys[0];
+			keys.splice(0,1);
+			return this._getKeyValue(obj[index],keys.join("."));
+		}
+		return obj[key];
+		
+	},
+	
+	_formatMessageParams: function(message) {
+		var result = message;
+		if (Array.isArray(message) && message.length !== 0) {
+			result = message[0];
+			for (var i =1; i < message.length - 1; i++) {
+				result += ', ' + message[i];
+			}
+			if (message.length > 1) {
+				result += ', ' + message[message.length -1];
+			}
+		}
+		return result;
+	},
+	
+	_getActionParams: function(response) {
+		var params = {};
+		
+		//Get params from action params table
+		//can overwrite any params created so far
+		var gr = new GlideRecord(this.vaConstants.IBM_VA_ACTION_PARAM);
+		gr.addQuery(this.vaConstants.ACTION, response.context.sn.action_sys_id);
+		gr.query();
+		while (gr.next()) {
+			params[gr.getValue(this.vaConstants.NAME)] = gr.getValue(this.vaConstants.VALUE);
+		}
+		
+		return params;
+	},
+	
+	_resetActionId: function(response) {
+		// Save old action for logging purposes
+		if (response.context.sn.action_sys_id) {
+			response.context.sn.old_action_id = response.context.sn.action_sys_id;
+			delete response.context.sn.action_sys_id;
+		}
+	},
+	
+	_formatError: function(error) {
+		return 'Type: ' + error.name + ' \nMessage: ' + error.message + '\nStack trace:\n' + error.stack;
+	},
+
+    type: 'ActionFacade'
+};]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2018-05-19 16:47:53</sys_created_on>
+        <sys_id>cc5b56a3db821300c7aaaab35b961992</sys_id>
+        <sys_mod_count>2</sys_mod_count>
+        <sys_name>ActionFacade</sys_name>
+        <sys_package display_value="SNOC Bot" source="x_94469_snoc_bot">40119227db021300c7aaaab35b96196f</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="SNOC Bot">40119227db021300c7aaaab35b96196f</sys_scope>
+        <sys_update_name>sys_script_include_cc5b56a3db821300c7aaaab35b961992</sys_update_name>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2018-05-19 16:54:45</sys_updated_on>
+    </sys_script_include>
+</record_update>

@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>public</access>
+        <active>true</active>
+        <api_name>x_94469_snoc_bot.WorkspaceUtil</api_name>
+        <client_callable>false</client_callable>
+        <description>Workspace utility API for the Watson Integration.</description>
+        <name>WorkspaceUtil</name>
+        <script><![CDATA[var WorkspaceUtil = Class.create();
+
+WorkspaceUtil.prototype = {
+    initialize: function() {
+		this.json = new global.JSON();
+		this.vaConstants = new x_94469_snoc_bot.ConversationConstants();
+		this._restMessage = this.vaConstants.REST_MESSAGE;
+		this.workspaceEmpty = null;
+		this.workspaceNull = null;
+    },
+	
+	isWorkspaceNull: function(workspace_id) {
+		if (this.workspaceNull === null) 
+			this.getWorkspace(workspace_id);
+		return this.workspaceNull;
+	},
+	
+	isWorkspaceEmpty: function(workspace_id) {
+		if (this.workspaceEmpty === null) {
+			this.getWorkspace(workspace_id);
+		}
+		return this.workspaceEmpty;
+	},
+	
+	/**
+	* getWorkspace: get's the JSON response from Watson REST API
+	*
+	* @param workspace_id theid of the workspace on Watson
+	* @return the response object or an error string
+	*/
+	getWorkspace: function(workspace_id) {
+		try { 
+			var r = new sn_ws.RESTMessageV2(this._restMessage, 'GET');
+			r.setStringParameterNoEscape(this.vaConstants.WORKSPACEID, workspace_id);
+			
+			var response = r.execute();
+			var responseBody = response.getBody();
+			var httpStatus = response.getStatusCode();
+			if (httpStatus === 200) {
+				this.workspaceNull = false;
+				var responseObject = this.json.decode(responseBody);
+				if(responseObject.intents.length === 0 && 
+				   responseObject.entities.length === 0 && 
+				   responseObject.dialog_nodes.length === 0 && 
+				   responseObject.counterexamples.length === 0) 
+					this.workspaceEmpty = true;	
+				else 
+					this.workspaceEmpty = false;
+			} else if (httpStatus === 404) {
+				this.workspaceNull = true;
+				this.workspaceEmpty = true;
+			} else {
+				this.workspaceEmpty = false;
+				this.workspaceNull = false;
+				return response;
+			}
+		} catch(ex) {
+			return 'x_94469_snoc_bot.WorkspaceUtil.getWorkspace: exception: ' + ((ex.message) ? ex.message : '');
+		}
+	},
+	
+	/**
+	* createWorkspace: Pushes a brand new sworkspace up to your IBM Bluemix Conversation Service via REST endpoint
+	*
+	* @param watsonWorkspaceJSON the JSON of th eworkspace to create
+	* @return object one property status:string  
+	*/
+	createWorkspace: function(watsonWorkspaceJSON) {
+		try { 
+			var content = JSON.stringify(watsonWorkspaceJSON);
+			var r = new sn_ws.RESTMessageV2(this._restMessage, 'CREATE');			
+			r.setStringParameterNoEscape(this.vaConstants.CONTENT, content);
+			
+			var response = r.execute();
+			var responseBody = response.getBody();
+			var httpStatus = response.getStatusCode();
+			if (httpStatus === 200 || httpStatus === 201) {
+				var responseObject = this.json.decode(responseBody);
+				var snWSNameId = this.createSNWorkspace(responseObject);
+				var snWorkspace = snWSNameId.split(':');
+				var snWsName = snWorkspace[0];
+				var snWsId = snWorkspace[1];
+				var snWsLogId = this.createSNWorkspaceLog(snWsName, snWsId, content, new GlideDateTime(), 'create');
+				return {
+					status: httpStatus + ' : Workspace: ' + snWsId + ' ; WorkspaceLog: ' + snWsLogId,
+					snWsId: snWsId
+				};
+			} else {
+				return {
+					status: response.getErrorMessage() + ': ' + responseBody
+				};
+			}
+		} catch(ex) {
+			return {
+				status: 'x_94469_snoc_bot.WorkspaceUtil.createWorkspace: exception: ' + ((ex.message) ? ex.message : '')
+			};
+		} 
+	},
+	
+	createSNWorkspace: function(responseObject) {
+		var gr = new GlideRecord(this.vaConstants.IBM_VA_WORKSPACE);
+		gr.initialize();
+		gr.setValue(this.vaConstants.NAME, responseObject.name);
+		gr.setValue(this.vaConstants.ACTIVE, true);
+		gr.setValue(this.vaConstants.WORKSPACE_CREATED, this.formatResponseTime(responseObject.created));
+		gr.setValue(this.vaConstants.WORKSPACE_UPDATED, this.formatResponseTime(responseObject.updated));
+		gr.setValue(this.vaConstants.LANGUAGE, responseObject.language);
+		gr.setValue(this.vaConstants.DESCRIPTION, responseObject.description);
+		gr.setValue(this.vaConstants.WORKSPACE_ID, responseObject.workspace_id);
+		var ws_sys_id = gr.insert();
+		return responseObject.name + ':' + ws_sys_id;
+	},
+	
+	createSNWorkspaceLog: function(workspace_name, workspace_id, content, syncDate, operation) {
+		var gr = new GlideRecord(this.vaConstants.IBM_VA_WORKSPACE_LOG);
+		gr.initialize();
+		gr.setValue(this.vaConstants.NAME, workspace_name);
+		gr.setValue(this.vaConstants.WORKSPACE, workspace_id);
+		gr.setValue(this.vaConstants.CONTENT, content);
+		gr.setValue(this.vaConstants.SYNC_DATE, syncDate);
+		gr.setValue(this.vaConstants.OPERATION, operation);
+		var workspace_log_id = gr.insert();
+		return workspace_log_id;
+	},
+	
+	formatResponseTime: function(responseTime) {
+		var timeParts = responseTime.split('T');
+		return timeParts[0];
+	},
+	
+    type: 'WorkspaceUtil'
+};]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2018-05-19 16:47:25</sys_created_on>
+        <sys_id>553b96a3db821300c7aaaab35b961900</sys_id>
+        <sys_mod_count>2</sys_mod_count>
+        <sys_name>WorkspaceUtil</sys_name>
+        <sys_package display_value="SNOC Bot" source="x_94469_snoc_bot">40119227db021300c7aaaab35b96196f</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="SNOC Bot">40119227db021300c7aaaab35b96196f</sys_scope>
+        <sys_update_name>sys_script_include_553b96a3db821300c7aaaab35b961900</sys_update_name>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2018-05-19 16:55:07</sys_updated_on>
+    </sys_script_include>
+</record_update>

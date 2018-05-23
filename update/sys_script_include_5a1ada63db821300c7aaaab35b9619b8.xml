@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>package_private</access>
+        <active>true</active>
+        <api_name>x_94469_snoc_bot.ConversationLauncher</api_name>
+        <client_callable>false</client_callable>
+        <description/>
+        <name>ConversationLauncher</name>
+        <script><![CDATA[var ConversationLauncher = Class.create();
+ConversationLauncher.prototype = {
+	initialize: function() {
+		this.vaConstants = new x_94469_snoc_bot.ConversationConstants();
+		//initialize with default language - "en"
+		this.i18n = new x_94469_snoc_bot.ConversationI18NUtils();
+	},
+	
+	processConversation: function(groupId, userLiveProfileId, messageBody ) {
+		gs.info("inside processConversation");
+		var watsonUtil = new x_94469_snoc_bot.WatsonChatUtil(this.vaConstants, this.i18n);
+		var start = watsonUtil.currentTimeMillis();
+		
+		var userSysId = gs.getUserID(); // Current user who wrote the live message record
+		
+		// Don't process the records, if it is from the BOT
+		if (this._isBotUser(userSysId)) {
+			return;
+		}
+		
+		// Find if the other user in the conversation is a bot user.
+		var otherUserSysId = this._findOtherUser(groupId, userLiveProfileId);
+		
+		if (! otherUserSysId) {
+			return; // There is no other user, So, don't process
+		}
+		
+		// Don't process the records, if the other user is not a BOT user. Two normal users are chatting
+		if (! this._isBotUser(otherUserSysId)) {
+			return;
+		}
+		
+		// The other user is a BOT user
+		var botUserName = this._getUserName(otherUserSysId);
+		
+		if (botUserName) {
+			if (this._isSystemMessage(messageBody, botUserName)) {
+				return;
+			}
+			
+			if (messageBody.includes('@' + botUserName)) {
+				return;
+			}
+		}
+		
+		var state = {};
+
+		// All good, process the message
+		var conversationController = new x_94469_snoc_bot.C3ConversationController(this.vaConstants, this.i18n);
+		conversationController.processMessage(groupId, otherUserSysId, messageBody, state);
+
+		var end = watsonUtil.currentTimeMillis();
+		watsonUtil.logDuration('ConversationLauncher', start, end);
+
+	},
+
+	_isBotUser: function(userSysId) {
+		var gr = new GlideRecord(this.vaConstants.IBM_VA_CONNECT_BOT);
+		return gr.get(userSysId);
+	},
+	
+	_getUserName: function(otherUserSysId) {
+		var user = new GlideRecord(this.vaConstants.SYS_USER);
+		if (user.get(otherUserSysId)) {
+			return user.first_name;
+		}
+		return null;
+	},
+	
+	_findOtherUser: function(groupId, liveProfileId){
+		var lgm = new GlideRecord(this.vaConstants.LIVE_GROUP_MEMBER);
+		lgm.addQuery(this.vaConstants.GROUP, groupId);
+		lgm.addQuery(this.vaConstants.MEMBER, '!=', liveProfileId);
+		lgm.query();
+		if (lgm.next()) {
+			return lgm.member.document; // this should be the other user record only.
+		}
+		return null;
+	},
+	
+	_isSystemMessage: function(message, botName) {
+		var ignoredMessages = this._getIgnoredMessages(botName);
+		return new global.ArrayUtil().indexOf(ignoredMessages, message) >= 0;			
+	},
+	
+	_getIgnoredMessages: function(botName) {
+		var cacheKey = this.vaConstants.CACHE_KEY + botName;
+		var ignoredMessages = [];
+		
+		if (!ignoredMessages.length) {
+			var gr = new GlideRecord(this.vaConstants.CHAT_QUEUE);
+			gr.addQuery(this.vaConstants.NAME, botName);
+			gr.addActiveQuery();
+			gr.query();
+			
+			while(gr.next()) {
+				if (gr.question)
+					ignoredMessages.push(gr.question);
+
+				if (gr.confirm_problem)
+					ignoredMessages.push(gr.confirm_problem);
+
+				if (gr.initial_agent_response)
+					ignoredMessages.push(gr.initial_agent_response);		
+			}
+			
+		}				
+		
+		return ignoredMessages;
+	},
+	
+	type: 'ConversationLauncher'
+};]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2018-05-19 16:42:34</sys_created_on>
+        <sys_id>5a1ada63db821300c7aaaab35b9619b8</sys_id>
+        <sys_mod_count>3</sys_mod_count>
+        <sys_name>ConversationLauncher</sys_name>
+        <sys_package display_value="SNOC Bot" source="x_94469_snoc_bot">40119227db021300c7aaaab35b96196f</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="SNOC Bot">40119227db021300c7aaaab35b96196f</sys_scope>
+        <sys_update_name>sys_script_include_5a1ada63db821300c7aaaab35b9619b8</sys_update_name>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2018-05-19 17:34:48</sys_updated_on>
+    </sys_script_include>
+</record_update>

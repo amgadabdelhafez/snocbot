@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>package_private</access>
+        <active>true</active>
+        <api_name>x_94469_snoc_bot.C3ConversationController</api_name>
+        <client_callable>false</client_callable>
+        <description/>
+        <name>C3ConversationController</name>
+        <script><![CDATA[var C3ConversationController = Class.create();
+C3ConversationController.prototype = {
+    initialize: function() {
+		this.vaConstants = new x_94469_snoc_bot.ConversationConstants();
+		//initialize with default language - "en"
+		this.i18n = new x_94469_snoc_bot.ConversationI18NUtils();
+		this.loopCounter = 1;		
+    },
+	
+	/**
+	 * Main function for handling messages sent to the bot
+	 * - Performs the REST call to Watson, processes the response back, runs any actions
+	 * - Saves the Watson state in database, creates a conversation log
+	 *
+	 * @param {sys_id} groupId
+	 * @param {sys_id} bot
+	 * @param {String} messageBody
+	 * @param {JSON Obj} state
+	 */
+	processMessage: function(groupId, bot, messageBody, state) {
+		var watsonUtil = new x_94469_snoc_bot.WatsonChatUtil(this.vaConstants, this.i18n);
+		var start = watsonUtil.currentTimeMillis();
+		var sessionManager = new x_94469_snoc_bot.SessionManager(this.vaConstants);
+		state = sessionManager.getConvState(groupId, bot);  // gets the previously saved response context
+		var workspace = this._getWorkspace(bot);
+		
+		if (workspace === null) {
+			var errorMsg = this.vaConstants.WORKSPACE_ERR_MSG + bot.getDisplayValue();
+			this.logConvError(state, '', messageBody, '', errorMsg);
+			this._sendResponse(groupId, bot, this.i18n.getMessageLang("I'm having problems right now. Please try again later."));
+			return;
+		}
+		this.i18n.setLanguage(workspace);
+		
+		if (this._isValidWatsonParam(state) && state.context.sn.params.continue_watson_dialog) {
+			delete state.context.sn.params.continue_watson_dialog;
+		}
+		
+		// Call watson service, get response
+		var conversationService = new x_94469_snoc_bot.WatsonConversationService(this.vaConstants, this.i18n);
+		var response = conversationService.processMessage(workspace, messageBody, state);
+
+		//If an error occurs communicating with Watson service
+		if (response.error_message) {
+			var newState = this.vaConstants.INITIAL_WATSON_CONTEXT_JSON_OBJ;
+			newState.context.sn.user = state.context.sn.user;
+			newState.context.sn.bot = state.context.sn.bot;
+			// Reset the session context in an exception scenario
+			sessionManager.setConvState(groupId, newState);
+			// Add the conversation_id and rest of the details for logging purpose only.
+			newState.context.conversation_id = state.context.conversation_id;		
+			this.logConvError(newState, workspace, messageBody, response.user_message, response.error_message);
+			this._sendResponse(groupId, bot, response.user_message || this.i18n.getMessageLang("I'm having problems right now. Please try again later."));
+			return;
+		}
+		
+		// Checks if any Actions need to run and process them
+		new x_94469_snoc_bot.ActionFacade(this.vaConstants, this.i18n).processAction(response);
+		if (response.action_error) {
+			sessionManager.resetParams(response.context);
+			// Override the entire Watson response with the error message
+			response.output.text = [this.i18n.getMessageLang("I'm having problems running that action. Please try again later.")];
+		}
+		
+		var silentPost = false;
+		if(this._isValidWatsonParam(response) && response.context.sn.params.continue_watson_dialog) {
+			silentPost = true;
+			delete response.context.sn.params.continue_watson_dialog;
+		}
+		
+		// Check to reach if reached the end of a use case
+		if (response.context.sn && response.context.sn.soft_reset === true) {
+			sessionManager.resetParams(response.context);
+			this.logConvInfo(response, workspace, this.vaConstants.LOG_STATE_RESOLVED);
+		}
+		else if (response.action_error) {
+			this.logConvError(response, workspace, messageBody, response.output.text[0], response.action_error);
+			delete response.action_error;
+		}
+		else {
+			this.logConvInfo(response, workspace, this.vaConstants.LOG_STATE_ACTIVE);
+		}
+		
+		// Save the Watson state in the database
+		sessionManager.setConvState(groupId, response);
+		
+		// if there is no Watson output text and no action response
+		if (!response.output.text[0] && !silentPost) {
+			gs.error(this.vaConstants.NO_RESPONSE_ERR_MSG);
+			this.logConvError(response, workspace, messageBody, '', 'No Watson output or action response detected');
+			this._sendResponse(groupId, bot, this.i18n.getMessageLang("I'm having problems right now. Please try again later."));
+		} else {
+			// Send each output as a seperate msg
+			for (var i = 0; i < response.output.text.length; i++) {
+				if (response.output.text[i] && response.output.text[i].trim()) {
+					this._sendResponse(groupId, bot, response.output.text[i]);
+				}
+			}
+		}
+		var end = watsonUtil.currentTimeMillis();
+		watsonUtil.logDuration('C3ConversationController', start, end);		
+
+		// If additional information needs to be sent to Watson without user input
+		
+		if (silentPost) {
+			this.loopCounter++;
+			// Do not loop more than 3 times
+			if (this.loopCounter <= 3) {
+				this.processMessage(groupId, bot, '', response); // messageBody is empty for the second call.
+			}
+			else {
+				this.logConvError(response, workspace, messageBody, '', 'Warning. Possible infinite loop. Cannot call IBM Watson Conversaion service more than 3 times in one transaction. Please update your conversation dialog flow.');
+				this._sendResponse(groupId, bot, this.i18n.getMessageLang("I'm having problems right now. Please try again later."));
+			}				
+		}		
+		
+	},
+	
+	/**
+	 * Retrieve the workspace record given the bot
+	 * @param {sys_id} bot
+	 * @return {Glide Record} ws
+	 */
+	_getWorkspace:function(bot) {		
+		var ws = new GlideRecord(this.vaConstants.IBM_VA_WORKSPACE);
+		ws.addQuery(this.vaConstants.CONNECT_BOT, bot);
+		ws.addActiveQuery();
+		ws.query();
+		
+		if (ws.next())
+			return ws;
+		else
+			return null;
+	},
+	
+	/**
+	 * Sends a new message to the Connect chat conversation
+	 * @param {sys_id} groupId
+	 * @param {sys_id} bot
+	 * @param {String} message
+	 */
+	_sendResponse: function(groupId, bot, message) {
+		var data = {
+			body : message,
+			from : bot
+		};
+		var conversation = sn_connect.Conversation.get(groupId);
+		conversation.sendMessage(data);
+	},
+	
+	/**
+	 * Get the live profile id from the user sys_id
+	 *
+	 * @param sysId
+	 * @return String the live_profile sys_id associated with the user, or NULL
+	 */
+	_getLiveProfileId: function(userSysId) {
+		var gr = new GlideRecord(this.vaConstants.LIVE_PROFILE);
+		gr.addQuery(this.vaConstants.DOCUMENT, userSysId);
+		gr.query();
+		if(gr.next()) {
+			return gr.getUniqueValue();
+		}
+		return null;
+	},
+	
+	/**
+	 * Checks if the given input JSON Obj is in the valid Watson Context format
+	 * @param {JSON Obj} state
+	 * @return {Boolean} true - if valid
+	 */
+	_isValidWatsonParam: function(state) {
+		return state && state.context && state.context.sn && state.context.sn.params;
+	},
+	
+	/**
+	 * Creates a new conversation log record
+	 *
+	 * @param {JSON Obj} response
+	 * @param {sys_id} workspace
+	 * @param {String} logState
+	 * @return {sys_id} inserted log record
+	 */
+	logConvInfo: function(response, workspace, logState) {
+		var gr = new GlideRecord(this.vaConstants.IBM_VA_CONV_LOG);
+		gr.initialize();
+		
+		if (response.context.sn.old_action_id) {
+			gr.action = response.context.sn.old_action_id || '';
+			delete response.context.sn.old_action_id;
+		}
+		
+		if (response.context.sn.error_msg)
+			gr.error_message = response.context.sn.error_msg;
+		
+		gr.workspace = workspace.sys_id;
+		gr.input_message = response.input.text;
+		gr.output_message = response.output.text.join('\n');
+		gr.conversation_id = response.context.conversation_id;
+		gr.response = JSON.stringify(response);
+		gr.action_output = JSON.stringify(response.context.sn.params) || '{}';
+		gr.user = gs.getUserID() || JSON.stringify(response.context.sn.user.sys_id);
+		gr.connect_bot = workspace.connect_bot;
+		gr.sequence = new Date().getTime();
+		gr.status = logState;
+		
+		return gr.insert();
+	},
+	
+	/**
+	 * Creates a new conversation error log assuming that a Watson response is not available
+	 *
+	 * @param {JSON Obj} response
+	 * @param {sys_id} workspace
+	 * @param {String} inputMsg
+	 * @param {String} outputMsg
+	 * @param {String} inputMsg
+	 * @return {sys_id} inserted log record
+	 */
+	logConvError: function(response, workspace, inputMsg, outputMsg, errorMsg) {
+		if (outputMsg === '')
+			response.output.text = [this.i18n.getMessageLang("I'm having problems right now. Please try again later.")];
+		else
+			response.output.text = [outputMsg];
+		response.input.text = inputMsg;
+		response.context.sn.error_msg = errorMsg;
+		
+		return this.logConvInfo(response, workspace, this.vaConstants.LOG_STATE_ERROR);
+	},
+	
+    type: 'C3ConversationController'
+};]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2018-05-19 16:48:47</sys_created_on>
+        <sys_id>418b1ea3db821300c7aaaab35b9619ba</sys_id>
+        <sys_mod_count>2</sys_mod_count>
+        <sys_name>C3ConversationController</sys_name>
+        <sys_package display_value="SNOC Bot" source="x_94469_snoc_bot">40119227db021300c7aaaab35b96196f</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="SNOC Bot">40119227db021300c7aaaab35b96196f</sys_scope>
+        <sys_update_name>sys_script_include_418b1ea3db821300c7aaaab35b9619ba</sys_update_name>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2018-05-19 16:53:15</sys_updated_on>
+    </sys_script_include>
+</record_update>

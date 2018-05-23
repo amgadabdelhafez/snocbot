@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>public</access>
+        <active>true</active>
+        <api_name>x_94469_snoc_bot.WatsonContextualSearchUtil</api_name>
+        <client_callable>false</client_callable>
+        <description>Util for Watson Contextual Search Actions</description>
+        <name>WatsonContextualSearchUtil</name>
+        <script><![CDATA[var WatsonContextualSearchUtil = Class.create();
+WatsonContextualSearchUtil.prototype = {
+    initialize: function(vaConstants, i18n) {
+		this.vaConstants = vaConstants;
+		this.i18n = i18n;
+	},
+	
+	search: function(context, searchTerm) {
+		var payload = {
+			// Search Context(cxs_context_config) sys_id/name.
+			context : context, 
+			query : {
+				freetext: searchTerm //(this is coming from watson)
+			}
+		};
+		
+		var request = new global.cxs_SearchAPI();
+		var response = request.search(payload);
+		
+		// Handles default error handling:
+		// TODO: Needs better error handling
+		return response;	
+	},
+	
+	// true for success, false for failure
+	processSearchResponse: function(response) {
+		return response.status && response.status.code === 200;
+	},
+	
+	// These error handling is for the contextual search engine only.
+	// TODO: Needs better error handling
+	processSearchErrors: function(response) {
+		if(response.status.code !== 200)
+			return this.i18n.getMessageLang("I'm having problems right now. Please try again later.");
+	},
+	
+	processGeneralResults: function(response, maxResults, confidenceThreshold) {
+		var results = response.results;
+		var relevantResults = [];
+		if(results.length > 0) {
+			for(var i=0 ; i<maxResults; i++) {
+				// Result exists and score > confidenceThreshold
+				if (results[i] && results[i].meta.score >= confidenceThreshold)
+					relevantResults[i] = results[i];
+				else
+					break;
+			}
+		}
+		return relevantResults;
+	},
+	
+    type: 'WatsonContextualSearchUtil'
+};]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2018-05-19 16:45:42</sys_created_on>
+        <sys_id>04da9e63db821300c7aaaab35b9619ea</sys_id>
+        <sys_mod_count>1</sys_mod_count>
+        <sys_name>WatsonContextualSearchUtil</sys_name>
+        <sys_package display_value="SNOC Bot" source="x_94469_snoc_bot">40119227db021300c7aaaab35b96196f</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="SNOC Bot">40119227db021300c7aaaab35b96196f</sys_scope>
+        <sys_update_name>sys_script_include_04da9e63db821300c7aaaab35b9619ea</sys_update_name>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2018-05-19 16:45:48</sys_updated_on>
+    </sys_script_include>
+</record_update>

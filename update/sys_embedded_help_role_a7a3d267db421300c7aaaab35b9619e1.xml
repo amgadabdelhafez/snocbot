@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<record_update table="sys_embedded_help_role">
+    <sys_embedded_help_role action="INSERT_OR_UPDATE">
+        <order>1000</order>
+        <role display_value="project_portfolio_user" name="project_portfolio_user">29571498ff111000dadaebcfebffadd3</role>
+        <sys_class_name>sys_embedded_help_role</sys_class_name>
+        <sys_created_by>system</sys_created_by>
+        <sys_created_on>2018-05-19 16:14:32</sys_created_on>
+        <sys_id>a7a3d267db421300c7aaaab35b9619e1</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_name>29571498ff111000dadaebcfebffadd3</sys_name>
+        <sys_package display_value="SNOC Bot" source="x_94469_snoc_bot">40119227db021300c7aaaab35b96196f</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="SNOC Bot">40119227db021300c7aaaab35b96196f</sys_scope>
+        <sys_update_name>sys_embedded_help_role_a7a3d267db421300c7aaaab35b9619e1</sys_update_name>
+        <sys_updated_by>system</sys_updated_by>
+        <sys_updated_on>2018-05-19 16:14:32</sys_updated_on>
+    </sys_embedded_help_role>
+</record_update>
